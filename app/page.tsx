@@ -1,65 +1,20 @@
-import Image from "next/image";
+import { InventoryTrendChart } from "@/components/charts/inventory-trend-chart";
+import { MovementList } from "@/components/dashboard/movement-list";
+import { SummaryCard } from "@/components/dashboard/summary-card";
+import { Icon } from "@/components/ui/icon";
+import { dailyTotals, dashboardSummary, mockInventory } from "@/lib/mock/inventory";
+import { formatQuantity } from "@/lib/comparison/inventory";
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+  const change = dashboardSummary.today - dashboardSummary.yesterday;
+  const reductions = [...mockInventory].filter((item) => item.todayChange < 0).sort((a,b) => a.todayChange - b.todayChange).slice(0, 4);
+  const additions = [...mockInventory].filter((item) => item.todayChange > 0).sort((a,b) => b.todayChange - a.todayChange).slice(0, 4);
+  const attention = mockInventory.filter((item) => item.status === "low-stock" || item.status === "out-of-stock");
+  return <div className="space-y-7">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-[#2d725f]">Inventory overview</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Good morning, Vasudha</h1><p className="mt-1 text-sm text-slate-500">Here is how your inventory is performing today.</p></div><div className="flex items-center gap-2"><span className="size-2 rounded-full bg-emerald-500"/><span className="text-xs text-slate-500">Mock data · Updated 7:30 AM IST</span></div></div>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><SummaryCard label="Today's inventory" value={dashboardSummary.today} helper={`${change >= 0 ? "+" : ""}${change} units vs yesterday`} icon="box" tone={change >= 0 ? "positive" : "danger"}/><SummaryCard label="Yesterday's inventory" value={dashboardSummary.yesterday} helper="Snapshot · 26 July" icon="inventory"/><SummaryCard label="Day-before inventory" value={dashboardSummary.dayBeforeYesterday} helper="Snapshot · 25 July" icon="orders"/><SummaryCard label="Products requiring attention" value={attention.length} helper="Low or out of stock" icon="warning" tone="warning"/></section>
+    <section className="grid gap-4 sm:grid-cols-3"><SummaryCard label="Total products" value={dashboardSummary.products} helper="Across all locations" icon="inventory"/><SummaryCard label="Low stock" value={dashboardSummary.lowStock} helper="At or below 20 units" icon="warning" tone="warning"/><SummaryCard label="Out of stock" value={dashboardSummary.outOfStock} helper="Immediate action required" icon="warning" tone="danger"/></section>
+    <section className="grid gap-5 xl:grid-cols-[1.55fr_1fr]"><div className="rounded-xl border border-slate-200/80 bg-white p-5"><div className="flex items-start justify-between"><div><h2 className="text-sm font-semibold text-slate-800">Three-day inventory</h2><p className="mt-1 text-xs text-slate-400">Total available units across locations</p></div><div className={`rounded-md px-2 py-1 text-xs font-semibold ${change >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>{change >= 0 ? "+" : ""}{change} today</div></div><div className="mt-4"><InventoryTrendChart data={dailyTotals}/></div></div><div className="rounded-xl border border-slate-200/80 bg-white"><div className="border-b border-slate-100 px-5 py-4"><h2 className="text-sm font-semibold text-slate-800">Products requiring attention</h2><p className="mt-1 text-[11px] text-slate-400">Prioritised by stock level</p></div><div className="divide-y divide-slate-100">{attention.map((item) => <div key={item.inventoryItemId} className="flex items-center gap-3 px-5 py-4"><div className={`grid size-9 place-items-center rounded-lg ${item.today <= 0 ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}><Icon name="warning" className="size-4"/></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-700">{item.productTitle}</p><p className="mt-0.5 text-[10px] text-slate-400">{item.locationName}</p></div><div className="text-right"><p className={`text-sm font-bold ${item.today <= 0 ? "text-red-600" : "text-amber-700"}`}>{formatQuantity(item.today)}</p><p className="text-[9px] uppercase text-slate-400">units</p></div></div>)}</div></div></section>
+    <section className="grid gap-5 lg:grid-cols-2"><MovementList title="Top inventory reductions" items={reductions} positive={false}/><MovementList title="Top inventory additions" items={additions} positive/></section>
+  </div>;
 }
