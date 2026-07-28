@@ -23,6 +23,11 @@ function isTokenResponse(value: unknown): value is TokenResponse {
 async function responseDetail(response: Response): Promise<string | null> {
   const text = await response.text();
   if (!text.trim()) return null;
+  const htmlTitleMatch = text.match(/<title>([^<]+)<\/title>/i);
+  const htmlTitle = htmlTitleMatch?.[1]?.trim() ?? null;
+  if (htmlTitle?.toLowerCase().includes("oauth error invalid_request")) {
+    return "OAuth error invalid_request. Check that the app and store are in the same Shopify organization, the app is installed on that store, and SHOPIFY_STORE_DOMAIN is the exact *.myshopify.com domain.";
+  }
   try {
     const parsed = JSON.parse(text) as { error?: unknown; error_description?: unknown };
     const error = typeof parsed.error === "string" ? parsed.error : null;
