@@ -72,4 +72,4 @@ npm run build
 
 ## Current limitation
 
-The dashboard still renders mock inventory data. Phase C now stores the real Shopify snapshots and exposes the latest three-day comparison, and Phase D will switch the UI over to those live results.
+The dashboard and inventory views now prefer the latest three Blob snapshots at runtime, and fall back to the typed mock data until three snapshots are available. Phase D can now focus on deeper polish and any remaining real-data edge cases.
