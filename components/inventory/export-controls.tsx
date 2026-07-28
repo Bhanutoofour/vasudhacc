@@ -18,7 +18,12 @@ export function ExportControls({ feed, query, status, location }: {
     return `/api/inventory/export?${params.toString()}`;
   }
 
-  const snapshotLabel = feed.latestSnapshotDate ? `Last snapshot: ${feed.latestSnapshotDate}` : "Waiting for snapshot history";
+  const snapshotLabel =
+    feed.mode === "snapshot"
+      ? `Last snapshot: ${feed.latestSnapshotDate ?? "unknown"}`
+      : feed.mode === "current"
+        ? "Live Shopify inventory"
+        : "Mock fallback";
 
   return (
     <div className="flex flex-col items-start gap-2 sm:items-end">

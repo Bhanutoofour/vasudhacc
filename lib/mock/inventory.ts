@@ -31,6 +31,7 @@ export const dashboardSummary = {
   dayBeforeYesterday: total("dayBeforeYesterday"),
   products: new Set(mockInventory.map((item) => item.productId)).size,
   variants: new Set(mockInventory.map((item) => item.variantId)).size,
+  locations: new Set(mockInventory.map((item) => item.locationId)).size,
   lowStock: mockInventory.filter((item) => item.today > 0 && item.today <= 20).length,
   outOfStock: mockInventory.filter((item) => item.today <= 0).length,
 };

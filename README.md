@@ -74,4 +74,4 @@ npm run build
 
 ## Current limitation
 
-The dashboard and inventory views now prefer the latest three Blob snapshots at runtime, and fall back to the typed mock data until three snapshots are available. Phase D can now focus on deeper polish and any remaining real-data edge cases.
+The dashboard and inventory views now use live Shopify inventory immediately, then switch to the latest three Blob snapshots once enough history exists. Phase D can now focus on deeper polish and any remaining real-data edge cases.
