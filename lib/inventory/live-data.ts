@@ -6,6 +6,7 @@ import type { DailyTotal, InventoryComparison } from "@/types/inventory";
 export interface InventoryFeed {
   source: "live" | "mock";
   availableSnapshots: number;
+  latestSnapshotDate: string | null;
   dailyTotals: DailyTotal[];
   items: InventoryComparison[];
   summary: {
@@ -52,10 +53,11 @@ function buildSummary(items: InventoryComparison[]) {
   };
 }
 
-function buildMockFeed(): InventoryFeed {
+function buildMockFallbackFeed(availableSnapshots: number, latestSnapshotDate: string | null): InventoryFeed {
   return {
     source: "mock",
-    availableSnapshots: 0,
+    availableSnapshots,
+    latestSnapshotDate,
     dailyTotals: mockDailyTotals,
     items: mockInventory,
     summary: mockDashboardSummary,
@@ -68,11 +70,12 @@ export async function getInventoryFeed(): Promise<InventoryFeed> {
     return {
       source: "live",
       availableSnapshots: history.availableSnapshots,
+      latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? null,
       dailyTotals: history.dailyTotals,
       items: history.items,
       summary: buildSummary(history.items),
     };
   }
 
-  return buildMockFeed();
+  return buildMockFallbackFeed(history.availableSnapshots, history.dailyTotals.at(-1)?.date ?? null);
 }
