@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vasudha Commerce Command Center
 
-## Getting Started
+Internal ecommerce intelligence for Vasudha Foods. Phase A provides the inventory dashboard with typed mock data. Phase B adds the secure Shopify Admin GraphQL integration. Phase C adds Vercel Blob snapshots and a daily cron job; the UI still shows mock data until the live history feed is wired in Phase D.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 App Router, React 19, strict TypeScript, Tailwind CSS 4
+- Shopify Admin GraphQL API `2026-07`
+- Recharts
+- Vercel deployment; private Vercel Blob snapshots and cron scheduling in Phase C
+
+## Local setup
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Copy `.env.example` to `.env.local` and provide values there. Never commit `.env.local` or expose the Admin token with a `NEXT_PUBLIC_` prefix.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```dotenv
+SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
+SHOPIFY_CLIENT_ID=your-dev-dashboard-client-id
+SHOPIFY_CLIENT_SECRET=your-dev-dashboard-client-secret
+SHOPIFY_API_VERSION=2026-07
+CRON_SECRET=a-long-random-secret
+BLOB_READ_WRITE_TOKEN=your-vercel-blob-token
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The Shopify Dev Dashboard app needs at least `read_products`, `read_inventory`, and `read_locations` Admin API scopes. Reinstall or update the app after changing scopes so the token receives them.
 
-## Learn More
+Create the Blob store as private inside the Vercel project storage settings. When the store is connected to the project, Vercel adds the Blob token env var automatically.
 
-To learn more about Next.js, take a look at the following resources:
+## Test the current-inventory API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Start the app, then call the protected server route:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/inventory
+```
 
-## Deploy on Vercel
+The route paginates all variants and all inventory levels, then returns one normalized row per Shopify inventory item and location. Shopify IDs—not SKU—are used as identity. Missing SKUs, images, inventory items, and levels are reported in `diagnostics`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Phase C snapshot flow
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Vercel Cron calls `GET /api/cron/inventory` once per day at `02:00 UTC`, which is `07:30 IST`.
+
+That route:
+
+- fetches the current Shopify inventory
+- writes a private JSON snapshot to `inventory-snapshots/YYYY-MM-DD.json`
+- overwrites the same day’s snapshot if it runs again
+
+The comparison reader is available at `GET /api/inventory/history`, which loads the latest three available snapshots from Blob and returns comparison data ready for the dashboard.
+
+## Security
+
+- Shopify requests execute only in server-only modules. Dev Dashboard credentials are exchanged for a short-lived token and refreshed automatically.
+- The Admin token is never returned, logged, or included in the client bundle.
+- `/api/inventory` requires `CRON_SECRET` as a bearer token and disables caching.
+- `/api/cron/inventory` and `/api/inventory/history` also require `CRON_SECRET`.
+- Private Blob reads use `BLOB_READ_WRITE_TOKEN`; the store is not public.
+- Keep all secrets in `.env.local` locally and in Vercel environment variables in production.
+
+## Checks
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+## Current limitation
+
+The dashboard still renders mock inventory data. Phase C now stores the real Shopify snapshots and exposes the latest three-day comparison, and Phase D will switch the UI over to those live results.
