@@ -6,9 +6,9 @@ import type { InventoryStatus } from "@/types/inventory";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function filenameForFeed(source: "live" | "mock", latestSnapshotDate: string | null, extension: "csv" | "json"): string {
+function filenameForFeed(source: "live" | "error", latestSnapshotDate: string | null, extension: "csv" | "json"): string {
   if (source === "live" && latestSnapshotDate) return `inventory-${latestSnapshotDate}.${extension}`;
-  return `inventory-mock.${extension}`;
+  return source === "error" ? `inventory-error.${extension}` : `inventory-mock.${extension}`;
 }
 
 function parseStatus(value: string | null): "all" | InventoryStatus {

@@ -23,7 +23,9 @@ export function ExportControls({ feed, query, status, location }: {
       ? `Last snapshot: ${feed.latestSnapshotDate ?? "unknown"}`
       : feed.mode === "current"
         ? "Live Shopify inventory"
-        : "Mock fallback";
+        : feed.errorMessage
+          ? feed.errorMessage
+          : "Shopify inventory unavailable";
 
   return (
     <div className="flex flex-col items-start gap-2 sm:items-end">

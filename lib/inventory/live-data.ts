@@ -2,13 +2,12 @@ import "server-only";
 import { compareInventory } from "@/lib/comparison/inventory";
 import { readLatestInventoryHistory } from "@/services/inventory-snapshots";
 import { fetchCurrentInventory } from "@/services/shopify-inventory";
-import { dailyTotals as mockDailyTotals, dashboardSummary as mockDashboardSummary, mockInventory } from "@/lib/mock/inventory";
 import type { DailyTotal, InventoryComparison } from "@/types/inventory";
 import type { CurrentInventoryItem, CurrentInventoryResult } from "@/types/shopify";
 
 export interface InventoryFeed {
-  source: "live" | "mock";
-  mode: "snapshot" | "current" | "mock";
+  source: "live" | "error";
+  mode: "snapshot" | "current" | "error";
   availableSnapshots: number;
   latestSnapshotDate: string | null;
   dailyTotals: DailyTotal[];
@@ -23,6 +22,7 @@ export interface InventoryFeed {
     lowStock: number;
     outOfStock: number;
   };
+  errorMessage: string | null;
 }
 
 function buildSummary(items: InventoryComparison[]) {
@@ -96,15 +96,25 @@ function buildCurrentDailyTotals(current: CurrentInventoryResult): DailyTotal[] 
   return [{ label: "Current", date: formatKolkataDateKey(new Date(current.capturedAt)), inventory: current.summary.totalInventory }];
 }
 
-function buildMockFallbackFeed(availableSnapshots: number, latestSnapshotDate: string | null): InventoryFeed {
+function buildErrorFeed(availableSnapshots: number, latestSnapshotDate: string | null, errorMessage: string): InventoryFeed {
   return {
-    source: "mock",
-    mode: "mock",
+    source: "error",
+    mode: "error",
     availableSnapshots,
     latestSnapshotDate,
-    dailyTotals: mockDailyTotals,
-    items: mockInventory,
-    summary: mockDashboardSummary,
+    dailyTotals: [],
+    items: [],
+    summary: {
+      today: 0,
+      yesterday: 0,
+      dayBeforeYesterday: 0,
+      products: 0,
+      variants: 0,
+      locations: 0,
+      lowStock: 0,
+      outOfStock: 0,
+    },
+    errorMessage,
   };
 }
 
@@ -119,6 +129,7 @@ export async function getInventoryFeed(): Promise<InventoryFeed> {
       dailyTotals: history.dailyTotals,
       items: history.items,
       summary: buildSummary(history.items),
+      errorMessage: null,
     };
   }
 
@@ -133,8 +144,23 @@ export async function getInventoryFeed(): Promise<InventoryFeed> {
       dailyTotals: buildCurrentDailyTotals(current),
       items,
       summary: buildSummary(items),
+      errorMessage: null,
     };
-  } catch {
-    return buildMockFallbackFeed(history.availableSnapshots, history.dailyTotals.at(-1)?.date ?? null);
+  } catch (error) {
+    if (history.availableSnapshots > 0) {
+      return {
+        source: "live",
+        mode: "snapshot",
+        availableSnapshots: history.availableSnapshots,
+        latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? null,
+        dailyTotals: history.dailyTotals,
+        items: history.items,
+        summary: buildSummary(history.items),
+        errorMessage: null,
+      };
+    }
+
+    const errorMessage = error instanceof Error ? error.message : "Shopify inventory could not be loaded.";
+    return buildErrorFeed(history.availableSnapshots, history.dailyTotals.at(-1)?.date ?? null, errorMessage);
   }
 }
