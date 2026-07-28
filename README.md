@@ -53,7 +53,7 @@ That route:
 
 The comparison reader is available at `GET /api/inventory/history`, which loads the latest three available snapshots from Blob and returns comparison data ready for the dashboard.
 
-The inventory page also exposes `GET /api/inventory/export`, which downloads the current comparison as a CSV file and respects the table filters passed in the query string.
+The inventory page also exposes `GET /api/inventory/export`, which downloads the current comparison as CSV or JSON and respects the table filters passed in the query string.
 
 ## Security
 

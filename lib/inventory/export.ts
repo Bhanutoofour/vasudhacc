@@ -1,4 +1,5 @@
 import type { InventoryComparison } from "@/types/inventory";
+import type { InventoryFeed } from "@/lib/inventory/live-data";
 
 function escapeCsv(value: string): string {
   if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -56,4 +57,26 @@ export function buildInventoryCsv(items: InventoryComparison[]): string {
     ].map(formatCell).join(","));
 
   return ["\ufeff" + header.join(","), ...rows].join("\r\n");
+}
+
+export function buildInventoryJson(feed: Pick<InventoryFeed, "source" | "availableSnapshots" | "latestSnapshotDate" | "summary">, items: InventoryComparison[]): string {
+  const payload = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    exportType: "inventory-comparison",
+    source: feed.source,
+    availableSnapshots: feed.availableSnapshots,
+    latestSnapshotDate: feed.latestSnapshotDate,
+    summary: feed.summary,
+    items: items
+      .slice()
+      .sort((left, right) =>
+        left.productTitle.localeCompare(right.productTitle) ||
+        left.locationName.localeCompare(right.locationName) ||
+        left.variantTitle.localeCompare(right.variantTitle) ||
+        left.inventoryItemId.localeCompare(right.inventoryItemId),
+      ),
+  };
+
+  return JSON.stringify(payload, null, 2);
 }
