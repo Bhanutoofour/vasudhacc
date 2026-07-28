@@ -53,6 +53,8 @@ That route:
 
 The comparison reader is available at `GET /api/inventory/history`, which loads the latest three available snapshots from Blob and returns comparison data ready for the dashboard.
 
+The inventory page also exposes `GET /api/inventory/export`, which downloads the current comparison as a CSV file.
+
 ## Security
 
 - Shopify requests execute only in server-only modules. Dev Dashboard credentials are exchanged for a short-lived token and refreshed automatically.
