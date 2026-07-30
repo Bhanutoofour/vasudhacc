@@ -18,6 +18,13 @@ export interface InventoryRecord {
   dayBeforeYesterday: number;
   yesterday: number;
   today: number;
+  tracked?: boolean;
+  productStatus?: "ACTIVE" | "DRAFT" | "ARCHIVED" | "UNLISTED";
+  productCreatedAt?: string;
+  productPublishedAt?: string | null;
+  inventoryItemCreatedAt?: string;
+  inventoryItemUpdatedAt?: string;
+  lowStockThreshold?: number;
 }
 
 export interface InventoryComparison extends InventoryRecord {

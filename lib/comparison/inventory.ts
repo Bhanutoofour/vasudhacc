@@ -3,7 +3,7 @@ import type { InventoryComparison, InventoryRecord, InventoryStatus } from "@/ty
 
 function getStatus(item: InventoryRecord): InventoryStatus {
   if (item.today <= 0) return "out-of-stock";
-  if (item.today <= LOW_STOCK_THRESHOLD) return "low-stock";
+  if (item.today <= (item.lowStockThreshold ?? LOW_STOCK_THRESHOLD)) return "low-stock";
   if (item.today > item.yesterday) return "stock-increased";
   if (item.today < item.yesterday) return "stock-reduced";
   return "in-stock";

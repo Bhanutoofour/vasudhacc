@@ -22,15 +22,22 @@ export interface ShopifyVariantNode {
   product: {
     id: string;
     title: string;
+    status: ShopifyProductStatus;
+    createdAt: string;
+    publishedAt: string | null;
     media: { nodes: ShopifyMediaNode[] };
   };
   inventoryItem: {
     id: string;
     sku: string | null;
     tracked: boolean;
+    createdAt: string;
+    updatedAt: string;
     inventoryLevels: ShopifyInventoryLevelConnection;
   } | null;
 }
+
+export type ShopifyProductStatus = "ACTIVE" | "DRAFT" | "ARCHIVED" | "UNLISTED";
 
 interface ShopifyMediaNode {
   preview: { image: { url: string } | null } | null;
@@ -49,6 +56,11 @@ export interface CurrentInventoryItem {
   locationName: string;
   available: number;
   tracked: boolean;
+  productStatus?: ShopifyProductStatus;
+  productCreatedAt?: string;
+  productPublishedAt?: string | null;
+  inventoryItemCreatedAt?: string;
+  inventoryItemUpdatedAt?: string;
 }
 
 export interface CurrentInventoryResult {

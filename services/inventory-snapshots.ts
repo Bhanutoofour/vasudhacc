@@ -19,7 +19,7 @@ interface BlobSnapshotEntry {
   uploadedAt: Date;
 }
 
-function toKolkataDateKey(date: Date): string {
+export function toKolkataDateKey(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: KOLKATA_TIME_ZONE,
     year: "numeric",
@@ -63,6 +63,13 @@ async function readSnapshot(pathname: string): Promise<InventorySnapshotDocument
   const document = (await new Response(response.stream).json()) as Partial<InventorySnapshotDocument>;
   if (!document || document.schemaVersion !== 1 || typeof document.snapshotDate !== "string" || typeof document.capturedAt !== "string" || !document.inventory) return null;
   return document as InventorySnapshotDocument;
+}
+
+export async function readRecentInventorySnapshots(limit = 30): Promise<InventorySnapshotDocument[]> {
+  const entries = (await listSnapshotEntries()).slice(-Math.max(1, limit));
+  return (await Promise.all(entries.map((entry) => readSnapshot(entry.pathname))))
+    .filter((snapshot): snapshot is InventorySnapshotDocument => snapshot !== null)
+    .sort((a, b) => a.snapshotDate.localeCompare(b.snapshotDate));
 }
 
 export async function readInventorySnapshotsByDate(snapshotDates: string[]): Promise<Map<string, InventorySnapshotDocument>> {

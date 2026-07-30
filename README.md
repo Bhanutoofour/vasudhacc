@@ -39,7 +39,7 @@ Never commit `.env.local`, expose these values through `NEXT_PUBLIC_` variables,
 The installed Shopify Dev Dashboard app requires these Admin API scopes:
 
 ```text
-read_products,read_inventory,read_locations
+read_products,read_inventory,read_locations,read_orders
 ```
 
 After changing scopes, release a new app version and approve the updated installation on the store. The app must remain installed for client-credentials authentication to work.
@@ -57,7 +57,16 @@ Use a unique password of at least 12 characters and a cryptographically random `
 - **Day before** uses the snapshot for the exact date two days earlier.
 - Missing snapshots display as unavailable instead of copying current inventory.
 - If Shopify is temporarily unavailable, the UI can fall back to the latest saved snapshots.
-- CSV and JSON exports reflect the authenticated user's current filtered view.
+- CSV, Excel, and JSON exports reflect the authenticated user's current filtered view.
+- Inventory can be filtered by Shopify lifecycle status and tracking state, and displays Shopify product images.
+
+## Operations and alerts
+
+- Dashboard and inventory pages provide manual refresh, manual snapshot creation, missing-snapshot warnings, the last successful snapshot time, and recent cron/manual execution history.
+- Settings are stored privately in Vercel Blob and include default/per-product low-stock thresholds, lead time, safety stock, dead-stock window, and default hiding of untracked variants.
+- Stock planning estimates daily depletion, days until stockout, reorder quantities, inventory/no-movement age, and dead stock from up to 60 daily snapshots. These are planning estimates, not accounting forecasts.
+- A successful scheduled snapshot can send a daily email through Resend and/or an approved WhatsApp Cloud API template. Manual snapshots do not send duplicate alerts. Channels are disabled until credentials are configured and explicitly enabled in Settings.
+- The Sales workspace reports 30-day orders, revenue, AOV, refunds, cancellations, best/slow products, sales-versus-stock, and a simple run-rate forecast. It requires `read_orders`; standard Shopify order access covers the most recent 60 days.
 
 ## Daily snapshots
 
@@ -68,6 +77,8 @@ inventory-snapshots/YYYY-MM-DD.json
 ```
 
 Running the cron more than once on the same day safely replaces that day's snapshot. When `CRON_SECRET` is configured in Vercel, scheduled requests include it as a bearer token.
+
+Each attempt also writes a private run record under `operations/snapshot-runs/`. Dashboard settings are stored at `operations/settings.json`.
 
 Protected diagnostic endpoints:
 

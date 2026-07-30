@@ -80,3 +80,12 @@ export function buildInventoryJson(feed: Pick<InventoryFeed, "source" | "availab
 
   return JSON.stringify(payload, null, 2);
 }
+
+function escapeXml(value: string): string { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+export function buildInventoryExcel(items: InventoryComparison[]): string {
+  const columns = ["Product", "Variant", "SKU", "Location", "Lifecycle", "Tracked", "Day before", "Yesterday", "Today", "Today change", "3-day change", "Status"];
+  const rows = items.map((item) => [item.productTitle, item.variantTitle, item.sku ?? "", item.locationName, item.productStatus ?? "", item.tracked === false ? "No" : "Yes", item.dayBeforeYesterday, item.yesterday, item.today, item.todayChange, item.threeDayChange, item.status]);
+  const rowXml = [columns, ...rows].map((row) => `<Row>${row.map((cell) => typeof cell === "number" ? `<Cell><Data ss:Type="Number">${cell}</Data></Cell>` : `<Cell><Data ss:Type="String">${escapeXml(String(cell))}</Data></Cell>`).join("")}</Row>`).join("");
+  return `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Inventory"><Table>${rowXml}</Table></Worksheet></Workbook>`;
+}

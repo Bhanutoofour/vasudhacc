@@ -7,11 +7,13 @@ import { formatQuantity } from "@/lib/comparison/inventory";
 import { getInventoryFeed } from "@/lib/inventory/live-data";
 import { connection } from "next/server";
 import { requireDashboardSession } from "@/lib/auth/authorization";
+import { SnapshotControls } from "@/components/inventory/snapshot-controls";
+import { readSnapshotRuns } from "@/services/operations-store";
 
 export default async function Home() {
   await requireDashboardSession();
   await connection();
-  const feed = await getInventoryFeed();
+  const [feed, runs] = await Promise.all([getInventoryFeed(), readSnapshotRuns(10)]);
   const isError = feed.mode === "error";
   const hasYesterday = feed.snapshotAvailability.yesterday;
   const hasDayBefore = feed.snapshotAvailability.dayBeforeYesterday;
@@ -37,6 +39,7 @@ export default async function Home() {
       </div>
     </div>
     <SnapshotStatusStrip feed={feed}/>
+    <SnapshotControls today={feed.inventoryDates.today} latestSnapshotDate={feed.latestSnapshotDate} runs={runs}/>
     {isError ? (
       <section className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-950">
         <h2 className="text-sm font-semibold">Shopify connection needs attention</h2>
@@ -52,7 +55,7 @@ export default async function Home() {
     </section>
     <section className="grid gap-4 sm:grid-cols-3">
       <SummaryCard label="Total products" value={feed.summary.products} helper="Across all locations" icon="inventory"/>
-      <SummaryCard label="Low stock" value={feed.summary.lowStock} helper="At or below 20 units" icon="warning" tone="warning"/>
+      <SummaryCard label="Low stock" value={feed.summary.lowStock} helper="Using configured thresholds" icon="warning" tone="warning"/>
       <SummaryCard label="Out of stock" value={feed.summary.outOfStock} helper="Immediate action required" icon="warning" tone="danger"/>
     </section>
     <section className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">

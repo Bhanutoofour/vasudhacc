@@ -47,6 +47,11 @@ function normalizeLevel(variant: ShopifyVariantNode, level: ShopifyInventoryLeve
     locationName: level.location.name,
     available,
     tracked: inventoryItem.tracked,
+    productStatus: variant.product.status,
+    productCreatedAt: variant.product.createdAt,
+    productPublishedAt: variant.product.publishedAt,
+    inventoryItemCreatedAt: inventoryItem.createdAt,
+    inventoryItemUpdatedAt: inventoryItem.updatedAt,
   };
 }
 

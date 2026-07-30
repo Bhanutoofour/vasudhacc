@@ -5,6 +5,7 @@ import { fetchCurrentInventory } from "@/services/shopify-inventory";
 import type { DailyTotal, InventoryComparison } from "@/types/inventory";
 import type { InventorySnapshotDocument } from "@/types/inventory-snapshot";
 import type { CurrentInventoryItem, CurrentInventoryResult } from "@/types/shopify";
+import { readOperationsSettings } from "@/services/operations-store";
 
 export interface InventoryFeed {
   source: "live" | "error";
@@ -44,8 +45,8 @@ function buildSummary(items: InventoryComparison[]) {
       dayBeforeYesterday: acc.dayBeforeYesterday + item.dayBeforeYesterday,
       products: acc.products.add(item.productId),
       variants: acc.variants.add(item.variantId),
-      lowStock: acc.lowStock + (item.today > 0 && item.today <= 20 ? 1 : 0),
-      outOfStock: acc.outOfStock + (item.today <= 0 ? 1 : 0),
+      lowStock: acc.lowStock + (item.status === "low-stock" ? 1 : 0),
+      outOfStock: acc.outOfStock + (item.status === "out-of-stock" ? 1 : 0),
     }),
     {
       today: 0,
@@ -133,6 +134,12 @@ function buildLiveComparison(
       sku: item.sku,
       imageUrl: item.imageUrl,
       locationName: item.locationName,
+      tracked: item.tracked,
+      productStatus: item.productStatus,
+      productCreatedAt: item.productCreatedAt,
+      productPublishedAt: item.productPublishedAt,
+      inventoryItemCreatedAt: item.inventoryItemCreatedAt,
+      inventoryItemUpdatedAt: item.inventoryItemUpdatedAt,
       dayBeforeYesterday,
       yesterday,
       today,
@@ -183,7 +190,7 @@ function buildErrorFeed(availableSnapshots: number, latestSnapshotDate: string |
 }
 
 export async function getInventoryFeed(): Promise<InventoryFeed> {
-  const history = await readLatestInventoryHistory();
+  const [history, settings] = await Promise.all([readLatestInventoryHistory(), readOperationsSettings()]);
 
   try {
     const current = await fetchCurrentInventory();
@@ -193,7 +200,7 @@ export async function getInventoryFeed(): Promise<InventoryFeed> {
     const snapshots = await readInventorySnapshotsByDate([dayBeforeYesterday, yesterday]);
     const dayBeforeSnapshot = snapshots.get(dayBeforeYesterday) ?? null;
     const yesterdaySnapshot = snapshots.get(yesterday) ?? null;
-    const items = buildLiveComparison(current, dayBeforeSnapshot, yesterdaySnapshot);
+    const items = buildLiveComparison(current, dayBeforeSnapshot, yesterdaySnapshot).map((item) => compareInventory({ ...item, lowStockThreshold: settings.productThresholds[item.productId] ?? settings.defaultLowStockThreshold }));
     return {
       source: "live",
       mode: "current",
@@ -225,8 +232,8 @@ export async function getInventoryFeed(): Promise<InventoryFeed> {
           yesterday: history.availableSnapshots >= 2,
         },
         dailyTotals: history.dailyTotals,
-        items: history.items,
-        summary: buildSummary(history.items),
+        items: history.items.map((item) => compareInventory({ ...item, lowStockThreshold: settings.productThresholds[item.productId] ?? settings.defaultLowStockThreshold })),
+        summary: buildSummary(history.items.map((item) => compareInventory({ ...item, lowStockThreshold: settings.productThresholds[item.productId] ?? settings.defaultLowStockThreshold }))),
         errorMessage: null,
       };
     }

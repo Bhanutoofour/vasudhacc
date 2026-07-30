@@ -1,5 +1,4 @@
-import { fetchCurrentInventory } from "@/services/shopify-inventory";
-import { writeCurrentInventorySnapshot } from "@/services/inventory-snapshots";
+import { captureInventorySnapshot } from "@/services/snapshot-capture";
 import { EnvironmentConfigurationError, isAuthorizedInternalRequest } from "@/lib/validation/env";
 
 export const runtime = "nodejs";
@@ -12,9 +11,8 @@ function json(body: object, status = 200) {
 export async function GET(request: Request) {
   try {
     if (!isAuthorizedInternalRequest(request)) return json({ error: { code: "UNAUTHORIZED", message: "A valid bearer token is required." } }, 401);
-    const inventory = await fetchCurrentInventory();
-    const snapshot = await writeCurrentInventorySnapshot(inventory);
-    return json({ ok: true, snapshot, inventory });
+    const result = await captureInventorySnapshot("cron");
+    return json({ ok: true, ...result });
   } catch (error: unknown) {
     if (error instanceof EnvironmentConfigurationError) return json({ error: { code: error.code, message: error.message } }, 503);
     console.error("Inventory snapshot failed", { name: error instanceof Error ? error.name : "UnknownError" });
