@@ -1,51 +1,57 @@
 import type { InventoryFeed } from "@/lib/inventory/live-data";
 
-function buildStatusText(feed: InventoryFeed): string {
-  if (feed.mode === "error") {
-    return feed.errorMessage ?? "Shopify inventory could not be loaded.";
-  }
-  if (feed.mode === "snapshot") {
-    return `Live Shopify data · ${feed.availableSnapshots} snapshot${feed.availableSnapshots === 1 ? "" : "s"}`;
-  }
-  if (feed.mode === "current") {
-    const remaining = Math.max(0, 3 - feed.availableSnapshots);
-    return remaining > 0
-      ? `Live Shopify current inventory · waiting for ${remaining} more snapshot${remaining === 1 ? "" : "s"}`
-      : "Live Shopify current inventory";
-  }
-  const remaining = Math.max(0, 3 - feed.availableSnapshots);
-  return remaining === 0 ? "Snapshot history unavailable" : `Waiting for ${remaining} more snapshot${remaining === 1 ? "" : "s"}`;
+function formatCapturedAt(value: string | null): string | null {
+  if (!value) return null;
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function historyStatus(feed: InventoryFeed): string {
+  const available = Number(feed.snapshotAvailability.yesterday) + Number(feed.snapshotAvailability.dayBeforeYesterday);
+  if (available === 2) return "Yesterday and day-before snapshots are ready";
+  if (available === 1) return "1 of 2 historical snapshots is ready";
+  return "Waiting for the first 2 historical snapshots";
 }
 
 export function SnapshotStatusStrip({ feed }: { feed: InventoryFeed }) {
   const isError = feed.mode === "error";
-  const isLive = feed.mode !== "error";
+  const isFallback = feed.mode === "snapshot";
   const toneClasses = isError
     ? "border-rose-100 bg-rose-50/80 text-rose-950"
-    : isLive
-      ? "border-emerald-100 bg-emerald-50/80 text-emerald-900"
-      : "border-amber-100 bg-amber-50/80 text-amber-950";
-  const dotClasses = isError ? "bg-rose-500" : isLive ? "bg-emerald-500" : "bg-amber-500";
+    : isFallback
+      ? "border-amber-100 bg-amber-50/80 text-amber-950"
+      : "border-emerald-100 bg-emerald-50/80 text-emerald-900";
+  const dotClasses = isError ? "bg-rose-500" : isFallback ? "bg-amber-500" : "bg-emerald-500";
+  const capturedAt = formatCapturedAt(feed.liveCapturedAt);
 
   return (
     <div className={`flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${toneClasses}`}>
       <div className="flex items-start gap-3">
         <span className={`mt-1 size-2 rounded-full ${dotClasses}`} />
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide">{feed.mode === "snapshot" ? "Snapshot history" : feed.mode === "current" ? "Live Shopify" : "Shopify error"}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide">
+            {isError ? "Shopify error" : isFallback ? "Snapshot fallback" : "Live Shopify"}
+          </p>
           <p className="mt-1 text-sm">
-            {buildStatusText(feed)}
-            {feed.mode === "snapshot" && feed.latestSnapshotDate ? ` · Latest snapshot ${feed.latestSnapshotDate}` : ""}
-            {feed.mode === "current" && feed.latestSnapshotDate ? ` · Current day ${feed.latestSnapshotDate}` : ""}
+            {isError
+              ? feed.errorMessage ?? "Shopify inventory could not be loaded."
+              : isFallback
+                ? `Live Shopify is unavailable · latest saved snapshot ${feed.latestSnapshotDate ?? "unknown"}`
+                : `Today is live · ${historyStatus(feed)}${capturedAt ? ` · updated ${capturedAt} IST` : ""}`}
           </p>
         </div>
       </div>
       <div className="text-xs font-medium opacity-80">
-        {feed.mode === "snapshot"
-          ? "Dashboard is reading Blob history"
-          : feed.mode === "current"
-            ? "Dashboard is reading live Shopify inventory while snapshots warm up"
-            : "Shopify could not be reached, so the dashboard is showing an empty error state instead of fake data"}
+        {isError
+          ? "No fake inventory is shown"
+          : isFallback
+            ? "Showing saved inventory until Shopify reconnects"
+            : "Refreshing this page pulls current Shopify stock"}
       </div>
     </div>
   );

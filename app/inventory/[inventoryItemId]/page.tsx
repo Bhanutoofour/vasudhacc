@@ -3,8 +3,47 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { ItemHistoryChart } from "@/components/charts/item-history-chart";
 import { StatusBadge } from "@/components/inventory/status-badge";
+import { requireDashboardSession } from "@/lib/auth/authorization";
 import { getInventoryFeed } from "@/lib/inventory/live-data";
+
 export const dynamic = "force-dynamic";
-export default async function InventoryDetail({ params }: { params: Promise<{ inventoryItemId: string }> }) { await connection(); const { inventoryItemId } = await params; const feed = await getInventoryFeed(); const item = feed.items.find((value) => value.inventoryItemId === inventoryItemId); if (!item) notFound(); const history = feed.dailyTotals.map((total, index) => ({ date: total.date, inventory: [item.dayBeforeYesterday, item.yesterday, item.today][index] })); return <div className="space-y-6"><Link href="/inventory" className="text-xs font-semibold text-[#246552]">← Back to inventory</Link><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div className="flex items-center gap-4"><div className="grid size-16 place-items-center rounded-xl bg-[#f2eee3] text-xl font-semibold text-[#8f7c45]">{item.productTitle[0]}</div><div><h1 className="text-2xl font-semibold text-slate-900">{item.productTitle}</h1><p className="mt-1 text-sm text-slate-500">{item.variantTitle} · {item.sku ?? "No SKU"}</p></div></div><StatusBadge status={item.status}/></div><section className="grid gap-4 sm:grid-cols-3"><Metric label="Current stock" value={item.today}/><Metric label="Yesterday" value={item.yesterday} change={item.todayChange}/><Metric label="Day before yesterday" value={item.dayBeforeYesterday} change={item.threeDayChange}/></section><section className="grid gap-5 lg:grid-cols-[1.4fr_1fr]"><div className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-800">Inventory history</h2><p className="mt-1 text-xs text-slate-400">Three-day stock trend</p><div className="mt-5"><ItemHistoryChart values={history}/></div></div><div className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-800">Inventory details</h2><dl className="mt-4 space-y-4"><Detail label="Location" value={item.locationName}/><Detail label="Product ID" value={item.productId}/><Detail label="Variant ID" value={item.variantId}/><Detail label="Inventory item ID" value={item.inventoryItemId}/><Detail label="Location ID" value={item.locationId}/></dl></div></section></div>; }
-function Metric({ label, value, change }: { label: string; value: number; change?: number }) { return <div className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>{change !== undefined && <p className={`mt-2 text-xs ${change > 0 ? "text-emerald-600" : change < 0 ? "text-red-600" : "text-slate-400"}`}>{change > 0 ? "+" : ""}{change} units</p>}</div>; }
-function Detail({ label, value }: { label: string; value: string }) { return <div><dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-all text-xs text-slate-700">{value}</dd></div>; }
+
+export default async function InventoryDetail({ params }: { params: Promise<{ inventoryItemId: string }> }) {
+  await requireDashboardSession();
+  await connection();
+  const { inventoryItemId } = await params;
+  const feed = await getInventoryFeed();
+  const item = feed.items.find((value) => value.inventoryItemId === inventoryItemId);
+  if (!item) notFound();
+
+  const history = [
+    ...(feed.snapshotAvailability.dayBeforeYesterday ? [{ date: feed.inventoryDates.dayBeforeYesterday, inventory: item.dayBeforeYesterday }] : []),
+    ...(feed.snapshotAvailability.yesterday ? [{ date: feed.inventoryDates.yesterday, inventory: item.yesterday }] : []),
+    { date: feed.inventoryDates.today, inventory: item.today },
+  ];
+
+  return <div className="space-y-6">
+    <Link href="/inventory" className="text-xs font-semibold text-[#246552]">← Back to inventory</Link>
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="flex items-center gap-4"><div className="grid size-16 place-items-center rounded-xl bg-[#f2eee3] text-xl font-semibold text-[#8f7c45]">{item.productTitle[0]}</div><div><h1 className="text-2xl font-semibold text-slate-900">{item.productTitle}</h1><p className="mt-1 text-sm text-slate-500">{item.variantTitle} · {item.sku ?? "No SKU"}</p></div></div>
+      <StatusBadge status={item.status}/>
+    </div>
+    <section className="grid gap-4 sm:grid-cols-3">
+      <Metric label={`Current stock · ${feed.inventoryDates.today}`} value={item.today}/>
+      <Metric label={`Yesterday · ${feed.inventoryDates.yesterday}`} value={feed.snapshotAvailability.yesterday ? item.yesterday : null} change={feed.snapshotAvailability.yesterday ? item.todayChange : undefined}/>
+      <Metric label={`Day before · ${feed.inventoryDates.dayBeforeYesterday}`} value={feed.snapshotAvailability.dayBeforeYesterday ? item.dayBeforeYesterday : null} change={feed.snapshotAvailability.dayBeforeYesterday ? item.threeDayChange : undefined}/>
+    </section>
+    <section className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+      <div className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-800">Inventory history</h2><p className="mt-1 text-xs text-slate-400">Dated snapshots and current live stock</p><div className="mt-5"><ItemHistoryChart values={history}/></div></div>
+      <div className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-800">Inventory details</h2><dl className="mt-4 space-y-4"><Detail label="Location" value={item.locationName}/><Detail label="Product ID" value={item.productId}/><Detail label="Variant ID" value={item.variantId}/><Detail label="Inventory item ID" value={item.inventoryItemId}/><Detail label="Location ID" value={item.locationId}/></dl></div>
+    </section>
+  </div>;
+}
+
+function Metric({ label, value, change }: { label: string; value: number | null; change?: number }) {
+  return <div className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-900">{value ?? "—"}</p>{change !== undefined && <p className={`mt-2 text-xs ${change > 0 ? "text-emerald-600" : change < 0 ? "text-red-600" : "text-slate-400"}`}>{change > 0 ? "+" : ""}{change} units</p>}{value === null ? <p className="mt-2 text-xs text-slate-400">Snapshot unavailable</p> : null}</div>;
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return <div><dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-all text-xs text-slate-700">{value}</dd></div>;
+}

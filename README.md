@@ -1,68 +1,92 @@
 # Vasudha Commerce Command Center
 
-Internal ecommerce intelligence for Vasudha Foods. Phase A provides the inventory dashboard with typed mock data. Phase B adds the secure Shopify Admin GraphQL integration. Phase C adds Vercel Blob snapshots and a daily cron job; the UI still shows mock data until the live history feed is wired in Phase D.
+Internal Shopify inventory intelligence for Vasudha Foods. The dashboard reads current inventory from Shopify, stores private daily snapshots in Vercel Blob, and compares live stock with the two prior calendar days.
 
 ## Stack
 
-- Next.js 16 App Router, React 19, strict TypeScript, Tailwind CSS 4
+- Next.js 16 App Router, React 19, strict TypeScript, and Tailwind CSS 4
 - Shopify Admin GraphQL API `2026-07`
 - Recharts
-- Vercel deployment; private Vercel Blob snapshots and cron scheduling in Phase C
+- Vercel deployment, private Vercel Blob storage, and Vercel Cron
 
 ## Local setup
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and provide values there. Never commit `.env.local` or expose the Admin token with a `NEXT_PUBLIC_` prefix.
+Copy `.env.example` to `.env.local` and configure every required value:
 
 ```dotenv
 SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
 SHOPIFY_CLIENT_ID=your-dev-dashboard-client-id
 SHOPIFY_CLIENT_SECRET=your-dev-dashboard-client-secret
 SHOPIFY_API_VERSION=2026-07
+
+DASHBOARD_USERNAME=vasudha-admin
+DASHBOARD_PASSWORD=a-strong-password-with-at-least-12-characters
+SESSION_SECRET=at-least-32-random-characters-used-to-sign-sessions
+
 CRON_SECRET=a-long-random-secret
 BLOB_READ_WRITE_TOKEN=your-vercel-blob-token
 ```
 
-The Shopify Dev Dashboard app needs at least `read_products`, `read_inventory`, and `read_locations` Admin API scopes. Reinstall or update the app after changing scopes so the token receives them.
+Never commit `.env.local`, expose these values through `NEXT_PUBLIC_` variables, or share them in screenshots.
 
-Create the Blob store as private inside the Vercel project storage settings. When the store is connected to the project, Vercel adds the Blob token env var automatically.
+## Shopify app
 
-## Test the current-inventory API
+The installed Shopify Dev Dashboard app requires these Admin API scopes:
 
-Start the app, then call the protected server route:
-
-```bash
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/inventory
+```text
+read_products,read_inventory,read_locations
 ```
 
-The route paginates all variants and all inventory levels, then returns one normalized row per Shopify inventory item and location. Shopify IDs—not SKU—are used as identity. Missing SKUs, images, inventory items, and levels are reported in `diagnostics`.
+After changing scopes, release a new app version and approve the updated installation on the store. The app must remain installed for client-credentials authentication to work.
 
-## Phase C snapshot flow
+## Dashboard authentication
 
-Vercel Cron calls `GET /api/cron/inventory` once per day at `02:00 UTC`, which is `07:30 IST`.
+All dashboard and inventory pages require the configured internal-admin username and password. Successful login creates a signed, HTTP-only, SameSite session cookie that expires after 12 hours. The inventory export route verifies the session independently, and the UI provides a Sign out action.
 
-That route:
+Use a unique password of at least 12 characters and a cryptographically random `SESSION_SECRET` of at least 32 characters. Change either value in Vercel and redeploy to invalidate or replace access.
 
-- fetches the current Shopify inventory
-- writes a private JSON snapshot to `inventory-snapshots/YYYY-MM-DD.json`
-- overwrites the same day’s snapshot if it runs again
+## Inventory behavior
 
-The comparison reader is available at `GET /api/inventory/history`, which loads the latest three available snapshots from Blob and returns comparison data ready for the dashboard.
+- **Today** is fetched live from Shopify whenever the dashboard or inventory page is loaded.
+- **Yesterday** uses the snapshot for the exact prior calendar date.
+- **Day before** uses the snapshot for the exact date two days earlier.
+- Missing snapshots display as unavailable instead of copying current inventory.
+- If Shopify is temporarily unavailable, the UI can fall back to the latest saved snapshots.
+- CSV and JSON exports reflect the authenticated user's current filtered view.
 
-The inventory page also exposes `GET /api/inventory/export`, which downloads the current comparison as CSV or JSON and respects the table filters passed in the query string.
+## Daily snapshots
+
+Vercel Cron calls `GET /api/cron/inventory` at `02:00 UTC`, or `07:30 IST`, every day. The route fetches current Shopify inventory and writes a private document to:
+
+```text
+inventory-snapshots/YYYY-MM-DD.json
+```
+
+Running the cron more than once on the same day safely replaces that day's snapshot. When `CRON_SECRET` is configured in Vercel, scheduled requests include it as a bearer token.
+
+Protected diagnostic endpoints:
+
+```text
+GET /api/inventory
+GET /api/inventory/history
+GET /api/cron/inventory
+```
+
+Each requires `Authorization: Bearer <CRON_SECRET>`.
 
 ## Security
 
-- Shopify requests execute only in server-only modules. Dev Dashboard credentials are exchanged for a short-lived token and refreshed automatically.
-- The Admin token is never returned, logged, or included in the client bundle.
-- `/api/inventory` requires `CRON_SECRET` as a bearer token and disables caching.
-- `/api/cron/inventory` and `/api/inventory/history` also require `CRON_SECRET`.
-- Private Blob reads use `BLOB_READ_WRITE_TOKEN`; the store is not public.
-- Keep all secrets in `.env.local` locally and in Vercel environment variables in production.
+- Shopify credentials, access tokens, dashboard credentials, and Blob credentials are server-only.
+- Shopify access tokens are short-lived, cached only in server memory, and refreshed automatically.
+- Dashboard sessions are signed and stored in Secure/HTTP-only cookies in production.
+- Page requests receive an optimistic authentication check, while pages and exports also verify the session close to the data access.
+- Private Blob data is never exposed through a public Blob URL.
+- Internal inventory and cron endpoints require constant-time bearer-token verification.
 
 ## Checks
 
@@ -72,6 +96,11 @@ npx tsc --noEmit
 npm run build
 ```
 
-## Current limitation
+## Deployment checklist
 
-The dashboard and inventory views now use live Shopify inventory immediately, then switch to the latest three Blob snapshots once enough history exists. Phase D can now focus on deeper polish and any remaining real-data edge cases.
+1. Configure all environment variables for the Vercel Production environment.
+2. Connect a private Vercel Blob store to the project.
+3. Deploy the application.
+4. Confirm an unauthenticated request redirects to `/login`.
+5. Sign in and verify current inventory against Shopify.
+6. Confirm the next scheduled cron execution returns `200` and creates the dated snapshot.

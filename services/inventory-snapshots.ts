@@ -65,6 +65,21 @@ async function readSnapshot(pathname: string): Promise<InventorySnapshotDocument
   return document as InventorySnapshotDocument;
 }
 
+export async function readInventorySnapshotsByDate(snapshotDates: string[]): Promise<Map<string, InventorySnapshotDocument>> {
+  const requestedDates = new Set(snapshotDates);
+  if (requestedDates.size === 0) return new Map();
+
+  const entries = await listSnapshotEntries();
+  const matchingEntries = entries.filter((entry) => {
+    const snapshotDate = entry.pathname.slice(`${SNAPSHOT_PREFIX}/`.length, -".json".length);
+    return requestedDates.has(snapshotDate);
+  });
+  const snapshots = (await Promise.all(matchingEntries.map((entry) => readSnapshot(entry.pathname))))
+    .filter((snapshot): snapshot is InventorySnapshotDocument => snapshot !== null);
+
+  return new Map(snapshots.map((snapshot) => [snapshot.snapshotDate, snapshot]));
+}
+
 function snapshotLabel(index: number, total: number): string {
   if (total <= 1) return "Today";
   if (total === 2) return index === 0 ? "Yesterday" : "Today";

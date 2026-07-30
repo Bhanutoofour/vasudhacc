@@ -1,8 +1,9 @@
 import "server-only";
 import { compareInventory } from "@/lib/comparison/inventory";
-import { readLatestInventoryHistory } from "@/services/inventory-snapshots";
+import { readInventorySnapshotsByDate, readLatestInventoryHistory } from "@/services/inventory-snapshots";
 import { fetchCurrentInventory } from "@/services/shopify-inventory";
 import type { DailyTotal, InventoryComparison } from "@/types/inventory";
+import type { InventorySnapshotDocument } from "@/types/inventory-snapshot";
 import type { CurrentInventoryItem, CurrentInventoryResult } from "@/types/shopify";
 
 export interface InventoryFeed {
@@ -10,6 +11,16 @@ export interface InventoryFeed {
   mode: "snapshot" | "current" | "error";
   availableSnapshots: number;
   latestSnapshotDate: string | null;
+  liveCapturedAt: string | null;
+  inventoryDates: {
+    dayBeforeYesterday: string;
+    yesterday: string;
+    today: string;
+  };
+  snapshotAvailability: {
+    dayBeforeYesterday: boolean;
+    yesterday: boolean;
+  };
   dailyTotals: DailyTotal[];
   items: InventoryComparison[];
   summary: {
@@ -73,9 +84,46 @@ function formatKolkataDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function buildCurrentComparison(items: CurrentInventoryItem[]): InventoryComparison[] {
-  return items.map((item) =>
-    compareInventory({
+function dateKeyDaysBefore(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function itemKey(item: Pick<CurrentInventoryItem, "inventoryItemId" | "locationId">): string {
+  return `${item.inventoryItemId}::${item.locationId}`;
+}
+
+function itemMap(items: CurrentInventoryItem[]): Map<string, CurrentInventoryItem> {
+  return new Map(items.map((item) => [itemKey(item), item]));
+}
+
+function buildLiveComparison(
+  current: CurrentInventoryResult,
+  dayBeforeSnapshot: InventorySnapshotDocument | null,
+  yesterdaySnapshot: InventorySnapshotDocument | null,
+): InventoryComparison[] {
+  const currentItems = itemMap(current.items);
+  const dayBeforeItems = itemMap(dayBeforeSnapshot?.inventory.items ?? []);
+  const yesterdayItems = itemMap(yesterdaySnapshot?.inventory.items ?? []);
+  const keys = new Set([...dayBeforeItems.keys(), ...yesterdayItems.keys(), ...currentItems.keys()]);
+
+  return [...keys].map((key) => {
+    const currentItem = currentItems.get(key);
+    const yesterdayItem = yesterdayItems.get(key);
+    const dayBeforeItem = dayBeforeItems.get(key);
+    const item = currentItem ?? yesterdayItem ?? dayBeforeItem;
+    if (!item) throw new Error("Inventory comparison item metadata is unavailable.");
+
+    const today = currentItem?.available ?? 0;
+    const yesterday = yesterdaySnapshot ? (yesterdayItem?.available ?? 0) : today;
+    const dayBeforeYesterday = dayBeforeSnapshot
+      ? (dayBeforeItem?.available ?? 0)
+      : yesterdaySnapshot
+        ? yesterday
+        : today;
+
+    return compareInventory({
       productId: item.productId,
       variantId: item.variantId,
       inventoryItemId: item.inventoryItemId,
@@ -85,15 +133,28 @@ function buildCurrentComparison(items: CurrentInventoryItem[]): InventoryCompari
       sku: item.sku,
       imageUrl: item.imageUrl,
       locationName: item.locationName,
-      dayBeforeYesterday: item.available,
-      yesterday: item.available,
-      today: item.available,
-    }),
-  );
+      dayBeforeYesterday,
+      yesterday,
+      today,
+    });
+  });
 }
 
-function buildCurrentDailyTotals(current: CurrentInventoryResult): DailyTotal[] {
-  return [{ label: "Current", date: formatKolkataDateKey(new Date(current.capturedAt)), inventory: current.summary.totalInventory }];
+function buildLiveDailyTotals(
+  current: CurrentInventoryResult,
+  dayBeforeSnapshot: InventorySnapshotDocument | null,
+  yesterdaySnapshot: InventorySnapshotDocument | null,
+): DailyTotal[] {
+  const totals: DailyTotal[] = [];
+  if (dayBeforeSnapshot) totals.push({ label: "Day before", date: dayBeforeSnapshot.snapshotDate, inventory: dayBeforeSnapshot.inventory.summary.totalInventory });
+  if (yesterdaySnapshot) totals.push({ label: "Yesterday", date: yesterdaySnapshot.snapshotDate, inventory: yesterdaySnapshot.inventory.summary.totalInventory });
+  totals.push({ label: "Today (live)", date: formatKolkataDateKey(new Date(current.capturedAt)), inventory: current.summary.totalInventory });
+  return totals;
+}
+
+function emptyDates(): InventoryFeed["inventoryDates"] {
+  const today = formatKolkataDateKey(new Date());
+  return { dayBeforeYesterday: dateKeyDaysBefore(today, 2), yesterday: dateKeyDaysBefore(today, 1), today };
 }
 
 function buildErrorFeed(availableSnapshots: number, latestSnapshotDate: string | null, errorMessage: string): InventoryFeed {
@@ -102,6 +163,9 @@ function buildErrorFeed(availableSnapshots: number, latestSnapshotDate: string |
     mode: "error",
     availableSnapshots,
     latestSnapshotDate,
+    liveCapturedAt: null,
+    inventoryDates: emptyDates(),
+    snapshotAvailability: { dayBeforeYesterday: false, yesterday: false },
     dailyTotals: [],
     items: [],
     summary: {
@@ -120,39 +184,46 @@ function buildErrorFeed(availableSnapshots: number, latestSnapshotDate: string |
 
 export async function getInventoryFeed(): Promise<InventoryFeed> {
   const history = await readLatestInventoryHistory();
-  if (history.availableSnapshots >= 3) {
-    return {
-      source: "live",
-      mode: "snapshot",
-      availableSnapshots: history.availableSnapshots,
-      latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? null,
-      dailyTotals: history.dailyTotals,
-      items: history.items,
-      summary: buildSummary(history.items),
-      errorMessage: null,
-    };
-  }
 
   try {
     const current = await fetchCurrentInventory();
-    const items = buildCurrentComparison(current.items);
+    const today = formatKolkataDateKey(new Date(current.capturedAt));
+    const yesterday = dateKeyDaysBefore(today, 1);
+    const dayBeforeYesterday = dateKeyDaysBefore(today, 2);
+    const snapshots = await readInventorySnapshotsByDate([dayBeforeYesterday, yesterday]);
+    const dayBeforeSnapshot = snapshots.get(dayBeforeYesterday) ?? null;
+    const yesterdaySnapshot = snapshots.get(yesterday) ?? null;
+    const items = buildLiveComparison(current, dayBeforeSnapshot, yesterdaySnapshot);
     return {
       source: "live",
       mode: "current",
       availableSnapshots: history.availableSnapshots,
-      latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? formatKolkataDateKey(new Date(current.capturedAt)),
-      dailyTotals: buildCurrentDailyTotals(current),
+      latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? null,
+      liveCapturedAt: current.capturedAt,
+      inventoryDates: { dayBeforeYesterday, yesterday, today },
+      snapshotAvailability: { dayBeforeYesterday: Boolean(dayBeforeSnapshot), yesterday: Boolean(yesterdaySnapshot) },
+      dailyTotals: buildLiveDailyTotals(current, dayBeforeSnapshot, yesterdaySnapshot),
       items,
       summary: buildSummary(items),
       errorMessage: null,
     };
   } catch (error) {
     if (history.availableSnapshots > 0) {
+      const inventoryDates = emptyDates();
+      inventoryDates.today = history.dailyTotals.at(-1)?.date ?? inventoryDates.today;
+      inventoryDates.yesterday = history.dailyTotals.at(-2)?.date ?? inventoryDates.yesterday;
+      inventoryDates.dayBeforeYesterday = history.dailyTotals.at(-3)?.date ?? inventoryDates.dayBeforeYesterday;
       return {
         source: "live",
         mode: "snapshot",
         availableSnapshots: history.availableSnapshots,
         latestSnapshotDate: history.dailyTotals.at(-1)?.date ?? null,
+        liveCapturedAt: null,
+        inventoryDates,
+        snapshotAvailability: {
+          dayBeforeYesterday: history.availableSnapshots >= 3,
+          yesterday: history.availableSnapshots >= 2,
+        },
         dailyTotals: history.dailyTotals,
         items: history.items,
         summary: buildSummary(history.items),
